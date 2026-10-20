@@ -1,0 +1,77 @@
+services:
+  vendor-simulator:
+    build:
+      context: ./services/vendor-simulator
+    container_name: openrvm_simulator
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8081:8081"
+    networks:
+      - openrvm_internal
+
+  openrvm-api:
+    build:
+      context: ./services/openrvm-api
+    container_name: openrvm_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - openrvm_internal
+      - homelab_ingress
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      vendor-simulator:
+        condition: service_started
+
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: openrvm_db
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - openrvm_pgdata:/var/lib/postgresql/data
+    networks:
+      - openrvm_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-cache:
+    image: redis:7-alpine
+    container_name: openrvm_redis
+    restart: unless-stopped
+    networks:
+      - openrvm_internal
+
+  openrvm-ui:
+    build:
+      context: ./services/openrvm-ui
+    container_name: openrvm_ui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8085:80"
+    networks:
+      - openrvm_internal
+      - homelab_ingress
+    depends_on:
+      - openrvm-api    
+
+networks:
+  openrvm_internal:
+    driver: bridge
+  homelab_ingress:
+    external: true
+
+volumes:
+  openrvm_pgdata:
