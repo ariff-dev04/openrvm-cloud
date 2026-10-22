@@ -86,11 +86,16 @@ const handleSendOtp = async () => {
   }
   phoneInput.value = cleanPhone
   errorMsg.value = ''
-  const res = await apiClient.sendOtp(cleanPhone, googleName.value || 'Recycler', googleEmail.value || 'user@gmail.com')
-  generatedOtpHint.value = res.demo_otp
-  otpDigits.value = ['', '', '', '']
-  step.value = 'otp'
+  try {
+    const res = await apiClient.sendOtp(cleanPhone, googleName.value || 'Recycler', googleEmail.value || 'user@gmail.com')
+    generatedOtpHint.value = res.demo_otp
+    otpDigits.value = ['', '', '', '']
+    step.value = 'otp'
+  } catch (e: any) {
+    errorMsg.value = e.message || 'Phone number already bound to another account'
+  }
 }
+
 
 const handleVerifyOtp = async () => {
   errorMsg.value = ''

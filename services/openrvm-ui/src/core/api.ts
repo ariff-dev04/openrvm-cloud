@@ -33,7 +33,9 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone, nickname, email })
     })
-    return r.json()
+    const data = await r.json()
+    if (!r.ok) throw new Error(data.detail || 'Failed to send OTP')
+    return data
   },
   async verifyOtp(phone: string, code: string) {
     const r = await fetch('/api/auth/verify-otp', {
