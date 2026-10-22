@@ -5,9 +5,9 @@ A cloud-native, microservices re-architecture of an IoT Reverse Vending Machine 
 ---
 
 ## 🌐 Live Portfolio Demo Links
-- 📱 **User Recycler Mobile Web App:** `https://YOUR-STATIC-DOMAIN.ngrok-free.app/?portal=user`
+- 📱 **User Recycler Mobile Web App:** `https://mumbling-lubricate-oat.ngrok-free.dev/?portal=user`
   - *Pre-Seeded Demo Login:* Click **"Preview Pre-Seeded Demo Account (`ariff.ukm@gmail.com`)"** or sign in with your own Google email & Malaysian phone number (includes a 1-click **PDPA Delete My Account & Data** button on `/profile`).
-- 🖥️ **Merchant Admin & Audit Platform:** `https://YOUR-STATIC-DOMAIN.ngrok-free.app/?portal=admin`
+- 🖥️ **Merchant Admin & Audit Platform:** `https://mumbling-lubricate-oat.ngrok-free.dev/?portal=admin`
   - *Recruiter Read-Only Sandbox:* Click **"Enter Recruiter Read-Only Demo (`demo@openrvm.my`)"** to explore all dashboards, Before/After camera snapshots, and bank payout modals safely (`GUEST_AUDITOR` RBAC role prevents database mutation with `HTTP 403`).
 
 ---
