@@ -1,129 +1,126 @@
-import os, time, hmac, hashlib, base64, random
+import os, time, hashlib, random
 from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 
-app = FastAPI(title="Mock AutoGCM Hardware Cloud API (Vendor Simulator)")
+app = FastAPI(title="Mock AutoGCM Hardware Cloud API v2.0")
 
 MERCHANT_NO = os.getenv("VENDOR_MERCHANT_NO", "MY_RVM_MERCHANT_001")
 SECRET = os.getenv("VENDOR_SECRET", "super_secret_autogcm_key_2026")
-WEBHOOK_DROP_RATE = float(os.getenv("WEBHOOK_DROP_RATE", "0.20"))
 
-# In-memory state simulating a 2-in-1 Station at UKM Bangi
-# Device 1: 2-Bin Dry RVM (000101445566) | Device 2: UCO Oil Machine (000101998877)
+# Realistic SVG Data-URI Snapshots for "BEFORE (BIN STATE)" and "AFTER (SUBMISSION)"
+BEFORE_SNAPSHOT = "https://placehold.co/600x360/1e293b/f59e0b?text=BEFORE+(BIN+STATE)%0ACamera+Snapshot+12.5kg"
+AFTER_SNAPSHOT = "https://placehold.co/600x360/0f172a/38bdf8?text=AFTER+(SUBMISSION)%0APET+Bottles+Detected"
+
 STATE = {
-    "notify_url": None,
-    "users": {
-        "0123456789": {"userNo": 10001, "nikeName": "Ariff_UKM", "phone": "0123456789", "integral": 150.0, "cardCode": "RFID-MY-001"}
-    },
     "devices": {
-        "000101445566": {
-            "deviceNo": "000101445566", "deviceName": "UKM Bangi Hub - Dry RVM (2-Bin)",
-            "address": "FTSM, UKM Bangi, Selangor", "sn": "SN-DRY-8821",
-            "isOnline": 1, "status": 0, "longitude": 101.7714, "latitude": 2.9226,
+        "RVM-SK-001": {
+            "deviceNo": "RVM-SK-001", "deviceName": "Eco Botanic Mall", "zone": "South Area",
+            "address": "L1-04, Eco Galleria, Iskandar Puteri", "sn": "SN-SK-001",
+            "deviceType": "DRY_2BIN", "isOnline": 1, "status": 0, "maintenanceMode": False,
+            "longitude": 103.6180, "latitude": 1.4402, "distance": 1.2, "supportPhone": "+60 12-345 6789",
             "positions": {
-                1: {"positionNo": 1, "rubbishTypeName": "PET Plastic Bottles", "integral": 10.0, "currentWeight": 12.50, "maxWeight": 40.0},
-                2: {"positionNo": 2, "rubbishTypeName": "Aluminum Cans & Paper", "integral": 15.0, "currentWeight": 8.20, "maxWeight": 40.0}
+                1: {"positionNo": 1, "rubbishTypeName": "Plastic & Can", "integral": 50.0, "currentWeight": 18.0, "maxWeight": 40.0}
             }
         },
-        "000101998877": {
-            "deviceNo": "000101998877", "deviceName": "UKM Bangi Hub - UCO Used Cooking Oil",
-            "address": "FTSM, UKM Bangi, Selangor", "sn": "SN-UCO-9901",
-            "isOnline": 1, "status": 0, "longitude": 101.7714, "latitude": 2.9226,
+        "UCO-SK-001": {
+            "deviceNo": "UCO-SK-001", "deviceName": "Eco Botanic Mall", "zone": "South Area",
+            "address": "L1-04, Eco Galleria, Iskandar Puteri", "sn": "SN-UCO-001",
+            "deviceType": "UCO_OIL", "isOnline": 1, "status": 0, "maintenanceMode": False,
+            "longitude": 103.6180, "latitude": 1.4402, "distance": 1.2, "supportPhone": "+60 12-345 6789",
             "positions": {
-                1: {"positionNo": 1, "rubbishTypeName": "Used Cooking Oil (UCO)", "integral": 25.0, "currentWeight": 18.00, "maxWeight": 50.0}
+                1: {"positionNo": 1, "rubbishTypeName": "Used Cooking Oil", "integral": 80.0, "currentWeight": 42.5, "maxWeight": 50.0}
+            }
+        },
+        "RVM-JB-002": {
+            "deviceNo": "RVM-JB-002", "deviceName": "JB City Square", "zone": "South Area",
+            "address": "B1-12, Jalan Wong Ah Fook, JB", "sn": "SN-JB-002",
+            "deviceType": "DRY_2BIN", "isOnline": 1, "status": 1, "maintenanceMode": False,
+            "longitude": 103.7635, "latitude": 1.4614, "distance": 3.5, "supportPhone": "+60 12-345 6789",
+            "positions": {
+                1: {"positionNo": 1, "rubbishTypeName": "Plastic & Can", "integral": 50.0, "currentWeight": 40.0, "maxWeight": 40.0},
+                2: {"positionNo": 2, "rubbishTypeName": "Paper", "integral": 30.0, "currentWeight": 8.0, "maxWeight": 40.0}
+            }
+        },
+        "RVM-PJ-003": {
+            "deviceNo": "RVM-PJ-003", "deviceName": "Paradigm Mall", "zone": "Central Area",
+            "address": "LG-09, Kelana Jaya, Selangor", "sn": "SN-PJ-003",
+            "deviceType": "DRY_2BIN", "isOnline": 0, "status": 2, "maintenanceMode": True,
+            "longitude": 101.5960, "latitude": 3.1048, "distance": 5.8, "supportPhone": "+60 17-889 1122",
+            "positions": {
+                1: {"positionNo": 1, "rubbishTypeName": "Plastic & Can", "integral": 50.0, "currentWeight": 10.2, "maxWeight": 40.0},
+                2: {"positionNo": 2, "rubbishTypeName": "Paper", "integral": 30.0, "currentWeight": 14.5, "maxWeight": 40.0}
             }
         }
     },
     "put_logs": []
 }
 
-def verify_vendor_auth(merchant_no: Optional[str], timestamp: Optional[str], sign: Optional[str]):
-    """Enforces Page 1 Auth: MD5(merchant-no + secret + timestamp) & 120s window"""
-    if not merchant_no or not timestamp or not sign:
-        raise HTTPException(status_code=401, detail={"code": 500, "msg": "Missing auth headers"})
-    now_ms = int(time.time() * 1000)
-    if abs(now_ms - int(timestamp)) > 120000:
-        raise HTTPException(status_code=401, detail={"code": 500, "msg": "Timestamp expired (>120s clock drift)"})
-    expected = hashlib.md5(f"{MERCHANT_NO}{SECRET}{timestamp}".encode()).hexdigest()
-    if sign.lower() != expected.lower() and sign != "DEV_BYPASS":
-        raise HTTPException(status_code=401, detail={"code": 500, "msg": "Invalid MD5 signature"})
-
 @app.get("/health")
 def health():
-    return {"status": "online", "service": "vendor-simulator", "devices": len(STATE["devices"]), "logs_count": len(STATE["put_logs"])}
+    return {"status": "online", "devices": len(STATE["devices"]), "logs_count": len(STATE["put_logs"])}
 
-# Section 2: Get bin position info
-@app.get("/api/open/v1/device/position")
-def get_device_position(deviceNo: str = Query(...), merchant_no: Optional[str] = Header(None, alias="merchant-no"), timestamp: Optional[str] = Header(None), sign: Optional[str] = Header(None)):
-    verify_vendor_auth(merchant_no, timestamp, sign)
-    dev = STATE["devices"].get(deviceNo)
+@app.get("/api/open/v1/devices")
+def get_all_devices():
+    return {"code": 200, "data": list(STATE["devices"].values())}
+
+@app.post("/api/open/v1/device/{device_no}/toggle-maintenance")
+def toggle_maintenance(device_no: str):
+    dev = STATE["devices"].get(device_no)
     if not dev:
-        return {"code": 500, "msg": "Device not found"}
-    return {"code": 200, "msg": "Operation succeeded", "data": list(dev["positions"].values())}
+        raise HTTPException(status_code=404, detail="Device not found")
+    dev["maintenanceMode"] = not dev["maintenanceMode"]
+    dev["isOnline"] = 0 if dev["maintenanceMode"] else 1
+    dev["status"] = 2 if dev["maintenanceMode"] else 0
+    return {"code": 200, "device": dev}
 
-# Section 10: Query nearby devices
-@app.get("/api/open/video/v2/nearby")
-def get_nearby_devices(longitude: float = 101.7714, latitude: float = 2.9226, isOnline: Optional[int] = None):
-    rows = []
-    for d in STATE["devices"].values():
-        rows.append({
-            "deviceNo": d["deviceNo"], "deviceName": d["deviceName"], "address": d["address"],
-            "sn": d["sn"], "isOnline": d["isOnline"], "status": d["status"],
-            "longitude": d["longitude"], "latitude": d["latitude"], "distance": 45.0
-        })
-    return {"code": 200, "msg": "Query successful", "rows": rows, "total": len(rows)}
-
-# Section 4: Paging query disposal logs
 @app.get("/api/open/v1/put")
-def get_put_logs(deviceNo: Optional[str] = None, phone: Optional[str] = None, pageNum: int = 1, pageSize: int = 10):
-    logs = STATE["put_logs"]
-    if deviceNo:
-        logs = [l for l in logs if l["deviceNo"] == deviceNo]
-    if phone:
-        logs = [l for l in logs if l["phonenumber"] == phone]
-    return {"code": 200, "msg": "Operation succeeded", "data": {"total": len(logs), "list": logs[:pageSize], "pageNum": pageNum, "pageSize": pageSize}}
+def get_put_logs():
+    return {"code": 200, "data": {"total": len(STATE["put_logs"]), "list": STATE["put_logs"]}}
 
-# Simulator Trigger: Simulate a user dropping recyclables or pouring Used Cooking Oil!
 class SimulateDropRequest(BaseModel):
-    deviceNo: str = "000101445566"
+    deviceNo: str = "RVM-SK-001"
     positionNo: int = 1
     phone: str = "0123456789"
-    addedWeightKg: float = 1.45
+    addedWeightKg: float = 1.25
 
 @app.post("/simulator/trigger-drop")
-async def simulate_drop(req: SimulateDropRequest):
+def simulate_drop(req: SimulateDropRequest):
     dev = STATE["devices"].get(req.deviceNo)
     if not dev or req.positionNo not in dev["positions"]:
         raise HTTPException(status_code=404, detail="Device or bin position not found")
+    if dev["maintenanceMode"]:
+        raise HTTPException(status_code=400, detail="Machine is currently in MAINTENANCE mode")
+
     pos = dev["positions"][req.positionNo]
     prev_weight = pos["currentWeight"]
-    new_bin_weight = round(prev_weight + req.addedWeightKg, 2)
-    pos["currentWeight"] = new_bin_weight
-    earned_points = round(req.addedWeightKg * pos["integral"], 2)
-
+    new_weight = round(prev_weight + req.addedWeightKg, 2)
+    pos["currentWeight"] = new_weight
+    points = round(req.addedWeightKg * pos["integral"], 2)
     put_id = int(time.time() * 1000) % 100000000
+
+    # Dry RVM captures Before & After snapshot URLs separated by a comma; UCO has None
+    snapshot_str = None
+    if dev["deviceType"] == "DRY_2BIN":
+        b_url = f"https://placehold.co/600x360/1e293b/f59e0b?text=BEFORE+(BIN+STATE)%0ABin+Weight:+{prev_weight}kg"
+        a_url = f"https://placehold.co/600x360/0f172a/10b981?text=AFTER+(SUBMISSION)%0A+{req.addedWeightKg}kg+{pos['rubbishTypeName'].replace(' ', '+')}"
+        snapshot_str = f"{b_url},{a_url}"
+
     log_entry = {
-        "id": put_id, "deviceNo": req.deviceNo, "deviceSn": dev["sn"],
-        "weight": req.addedWeightKg, "positionWeight": new_bin_weight,
-        "theoryWeight": req.addedWeightKg, "reviewWeight": req.addedWeightKg,
-        "integral": earned_points, "phonenumber": req.phone,
-        "method": "Scan QR Code", "status": 1,
-        "createTime": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "rubbishLogDetailsVOList": [{
-            "positionId": req.positionNo, "rubbishName": pos["rubbishTypeName"],
-            "weight": req.addedWeightKg, "integral": earned_points
-        }]
+        "id": put_id,
+        "deviceNo": req.deviceNo,
+        "deviceName": dev["deviceName"],
+        "deviceType": dev["deviceType"],
+        "positionNo": req.positionNo,
+        "rubbishName": pos["rubbishTypeName"],
+        "ratePerKg": pos["integral"],
+        "prevWeight": prev_weight,
+        "positionWeight": new_weight,
+        "weight": req.addedWeightKg,
+        "integral": points,
+        "phonenumber": req.phone,
+        "putImgUrl": snapshot_str,
+        "createTime": time.strftime("%d/%m/%Y, %I:%M:%S %p")
     }
     STATE["put_logs"].insert(0, log_entry)
-
-    webhook_sent = False
-    if STATE["notify_url"] and random.random() > WEBHOOK_DROP_RATE:
-        webhook_sent = True
-    return {
-        "code": 200,
-        "msg": "Simulated drop recorded in Vendor Cloud",
-        "deltaCalculation": f"{new_bin_weight}kg (New Bin) - {prev_weight}kg (Old Bin) = {req.addedWeightKg}kg",
-        "webhookFired": webhook_sent,
-        "event": log_entry
-    }
+    return {"code": 200, "msg": "Drop recorded (Pending Admin Approval)", "event": log_entry}

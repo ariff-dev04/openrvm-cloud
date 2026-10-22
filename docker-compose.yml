@@ -65,7 +65,34 @@ services:
       - openrvm_internal
       - homelab_ingress
     depends_on:
-      - openrvm-api    
+      - openrvm-api   
+
+   # Permanent Public HTTPS Tunnel (URL never changes on server reboot!)
+  ngrok-tunnel:
+    image: ngrok/ngrok:alpine
+    container_name: openrvm_ngrok
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - "http"
+      - "http://openrvm-ui:80"
+      - "--url=${NGROK_STATIC_DOMAIN}"
+    networks:
+      - openrvm_internal
+    depends_on:
+      - openrvm-ui    
+
+  # Public HTTPS Zero-Trust Tunnel (Exposes openrvm-ui:80 without router port forwarding!)
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: openrvm_tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://openrvm-ui:80
+    networks:
+      - openrvm_internal
+    depends_on:
+      - openrvm-ui
 
 networks:
   openrvm_internal:
