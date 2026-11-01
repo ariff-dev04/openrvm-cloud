@@ -88,9 +88,12 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: openrvm_tunnel
     restart: unless-stopped
-    command: tunnel --no-autoupdate --url http://openrvm-ui:80
+    env_file:
+      - .env
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     networks:
       - openrvm_internal
+      - homelab_ingress
     depends_on:
       - openrvm-ui
 
