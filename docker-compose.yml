@@ -90,7 +90,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate --protocol http2 run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     networks:
       - openrvm_internal
       - homelab_ingress
